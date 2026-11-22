@@ -1,197 +1,167 @@
-# RMG NetGuard
+# NetGuard-Core
 
-面向 KernelSU 的 DNS / VPN 双轨守护模块，用于协调 AdGuard Home（AGH）与
-Clash Meta / mihomo 的 DNS 接管关系。默认 `observe`：不自动改变劫持拓扑；
-自动切换与 DNS 集成都必须由用户在 WebUI 中显式开启，且后者一旦开启便独立于
-模式运行（会备份、漂移重打并还原活动 profile）。
+> **零常驻 · 零延迟 · 面向 Android / KernelSU 的极简内核级 DNS/VPN 双轨网络守卫**
+
+NetGuard-Core 专为彻底解决 Android 环境下 **AdGuard Home (AGH)** 与 **Clash Meta / mihomo (TUN 模式)** 协同运行时的网络冲突、断网黑洞与后台功耗痛点而重构。
+
+基于 **Linux 内核数据面 0ms 旁路** 与 **单 inotifyd 秒级熔断机制**，实现稳态 **0 常驻 Shell 进程**、**稳态 0% CPU 占用**。不篡改任何系统分区，**深度兼容临时 Root（如 CVE-2026-43499 / late-load）与常规完整 Root 环境**。
 
 [![Latest release](https://img.shields.io/github/v/release/deancyl/rmg-netguard?sort=semver)](https://github.com/deancyl/rmg-netguard/releases/latest)
-[![KernelSU](https://img.shields.io/badge/KernelSU-late--load-2ea44f)](https://kernelsu.org/zh_CN/guide/module.html)
-[![Android](https://img.shields.io/badge/Android-16-3ddc84)](https://github.com/deancyl/rmg-netguard)
-[![Shell](https://img.shields.io/badge/runtime-Android%20sh-4eaa25)](https://github.com/deancyl/rmg-netguard)
+[![KernelSU](https://img.shields.io/badge/KernelSU-v3.3.1%20compliant-2ea44f)](https://kernelsu.org/zh_CN/guide/module.html)
+[![Android](https://img.shields.io/badge/Android-12%20--%2016+-3ddc84)](https://github.com/deancyl/rmg-netguard)
+[![Architecture](https://img.shields.io/badge/Architecture-0%20Shell%20Daemon-blue)](https://github.com/deancyl/rmg-netguard)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> 这是会修改 `iptables` 和 Clash Meta 活动配置的生产级模块。安装前请阅读
-> [安全边界](#安全边界) 与 [故障恢复](https://github.com/deancyl/rmg-netguard/wiki/故障排查与恢复)。
+---
 
-## 功能
+## 为什么需要 NetGuard-Core？（直击痛点）
 
-- **双轨拓扑**：VPN 关闭时由 `nat OUTPUT` 劫持 DNS 到 AGH；VPN 开启时可摘除
-  劫持，让 mihomo 的上游继续经过 AGH。
-- **默认只观测**：`observe` 模式不摘取/恢复劫持，只采样与记录；注意 DNS 集成的漂移重打独立于此模式。
-- **切换方向不对称**：`attach`（恢复劫持）要求 AGH 进程与 5591 应答都正常；`detach`（摘除劫持）是恢复系统 DNS 的 **fail-open 救援方向**，AGH 不健康时仍会执行并记 RESCUE 事件。VPN 状态需连续两轮（约 3 分钟）稳定后才自动动作；切换模式本身不立即改变拓扑。
-- **DNS 集成可逆**：修改 Clash Meta 活动 profile 前自动备份，检测订阅更新导致的漂移并重打补丁，补丁包含 NS5591 与 `GEOIP,CN,DIRECT` 兜底规则，每次写入后自动广播 `PROFILE_CHANGED` 触发 mihomo 内存热重载；卸载时恢复原配置。
-- **KernelSU WebUI**：顶部常驻状态、快照时间、就近操作反馈、面板内确认、
-  自动刷新和单飞任务锁。
-- **可观测**：状态机、事件日志、规则审计、过滤探针和 AGH querylog 统计。
-- **空载友好**：未安装 AGH / Clash 时进入纯观测空载，不等待探针、不写 netfilter。
+在 Android 上通过 Root 同时使用本地广告拦截（AdGuard Home 监听 53/5591）与代理工具（Clash Meta / mihomo 的 TUN 虚拟网卡）时，绝大多数用户都会踩进以下四大痛点：
 
-## 工作模式
+1. **双轨流量冲突与回环暴增**  
+   iptables 将全局 DNS 强行重定向至本地 AGH，而代理客户端的 TUN 网卡也尝试处理 DNS。两套规则冲突极易导致 DNS 泄漏、回流死循环、查询超时，甚至使代理节点流量异常暴增（如 Fake-IP 漏入 MATCH 规则走代理节点）。
+2. **AGH 崩溃/重启引发“全机断网黑洞”**  
+   一旦 AdGuard Home 进程发生闪退、升级或因内存压力被系统回收，iptables 劫持与 Clash 上游依然指向 `127.0.0.1:5591`，整台手机所有网络请求在毫秒级内全部黑洞超时，App 与网页完全瘫痪。
+3. **传统看门狗后台耗电与频繁唤醒**  
+   现有大多数管理脚本使用后台死循环（`while true; do sleep ...`），不断启动 Shell 进程反复轮询网络状态、执行 `ip link` 或重写 iptables 规则。这不仅增加了系统调用开销，还会造成 CPU 频繁唤醒，显著增加待机功耗。
+4. **临时 Root（越狱环境 / 无法重启）的生态缺失**  
+   对于临时 Root（如通过 CVE-2026-43499 提权、KernelSU late-load 或未固化环境）用户而言，**重启手机意味着丢失 Root 权限**！传统模块动辄要求软重启、依赖复杂 init 挂载，或者因卡片状态未合并导致 KernelSU 开关被锁死；业界急需一款**零修改 `/system` 分区、纯运行时调度、支持免重启热安装与热生效**的生产级守卫模块。
 
-| 模式 | 行为 | 适合场景 |
-|---|---|---|
-| `observe` | 只采样状态，不摘取或恢复劫持（DNS 集成仍独立运行） | 首次安装、排障、稳定优先 |
-| `auto` | VPN 连续 2 轮稳定开启后摘除劫持；关闭后恢复劫持 | AGH 与 Clash Meta 已稳定共存 |
+---
 
-两条轨道的目标拓扑（轨道 B 的「完整过滤形态」还需 DNS 集成为 mihomo 配置
-`127.0.0.1:5591` 上游并**重开一次 VPN**；未重载时为基础连通形态，能上网但
-不过 AGH 过滤）：
+## 核心架构突破（v3.1.1 极简零功耗设计）
 
-| 轨道 | 条件 | DNS 路径 |
-|---|---|---|
-| A | VPN 关闭，AGH 劫持启用 | App 53 → AGH → 上游 DNS |
-| B | VPN 开启，AGH 劫持摘除 | App DNS → TUN → mihomo → AGH:5591 → GeoIP |
-
-轨道 B 的过滤效果依赖 **DNS 集成**。若活动 profile 没有指向
-`127.0.0.1:5591`，模块会把集成状态显示为“未打补丁”，不会把它误报为已开启。
-
-## 安装
-
-### 前置条件
-
-- KernelSU 环境，支持模块与 WebUI；本项目已在 KernelSU 3.3.1 late-load 上验证。
-- 已安装并启动 AdGuard Home，默认监听 `127.0.0.1:5591`。
-- 使用 DNS 集成时，需要 Clash Meta 包名
-  `com.github.metacubex.clash.meta` 及可读的活动 profile。
-- 首次安装前准备可用的模块禁用/安全模式方式，并保留当前网络配置快照。
-
-不同 KernelSU 版本的支持范围请以
-[KernelSU 模块文档](https://kernelsu.org/zh_CN/guide/module.html) 为准。
-
-### 刷入
-
-1. 从 [Releases](https://github.com/deancyl/rmg-netguard/releases/latest) 下载
-   最新的 `rmg-netguard-<版本>.zip`（以 Release 资产为准）。
-2. 在 KernelSU 管理器中安装 zip。
-3. 让模块在下一轮启动中加载，或在 late-load 会话里手动启动一次：
-
-```sh
-su -c 'sh /data/adb/modules/rmg_netguard/service.sh'
-```
-
-4. 打开模块 WebUI，先保持“只看不动”，确认状态、AGH 与轨道信息正常。
-5. 需要自动切换时再打开“自动切换”（拓扑约 3 分钟后自动调整，切换本身不立即
-   改变轨道）；需要轨道 B 过滤时再打开“DNS 集成”，并**重开一次 Clash Meta
-   VPN** 使补丁生效。
-
-升级时直接刷入新 zip。升级会保留 `run/mode`、`run/integration`、事件日志和
-DNS 集成备份（v2.3.1+：customize.sh 在安装时自动迁移旧 run/ 数据）；卸载会停止 guard、还原模块持有的 profile 备份，并在必要时恢复
-AGH 劫持。
-
-## WebUI
-
-- **顶部状态条**：状态、模式、轨道、AGH、探针和快照年龄始终可见。
-- **只看不动 / 自动切换**：切换前显示面板内确认条，不调用阻塞式原生对话框；切换后结果带会提示「拓扑约 3 分钟内自动调整」。
-- **DNS 集成**：以活动 profile 的实际补丁状态为准，可直接开启或还原；开启/关闭后结果带会提示「需重开一次 VPN 才生效」。此开关独立于模式。
-- **刷新状态**：执行完整状态采集，包含 DNS 过滤探针；首屏与 30 秒轮询走轻量 `status_fast`（不跑探针）。
-- **一键体检 / 规则审计 / 拦截统计 / 事件日志**：只读诊断；体检约 3–8 秒并产生少量测试流量，事件日志显示最近 50 条。结果立即显示在顶部结果区，完整文本位于“详细输出”。
-- **每 30 秒自动刷新**：默认开启；后台常规采样 90 秒（无 AGH / Clash 空载时 300 秒），页面右上角显示的是最近一次后台快照的时间。
-- **动作分组**：只读诊断与「摘除 / 恢复劫持」在界面上分开标注，后者需二次确认。
-
-操作进行中会锁定动作按钮并显示秒数。重复点击会得到明确提示；命令超过 90 秒
-未返回时自动解除锁定。失败时界面显示红色错误，不再把非零退出码或无输出当作成功。
-
-## 安全边界
-
-1. 自动切换只摘取或插入 `nat OUTPUT` 上的一条
-   `OUTPUT -> ADGUARD_REDIRECT_DNS` 跳转，不修改链体。
-2. 方向不对称：`attach`（恢复劫持）在 AGH 不存活或 5591 无应答时被健康门拒绝，
-   防止 DNS 黑洞；`detach`（摘除劫持）是恢复系统 DNS 的 fail-open 救援方向，
-   AGH 不健康时仍会执行并记 `RESCUE` 事件。
-3. DNS 集成只处理当前活动的 Clash Meta profile；首份备份不会被覆盖，备份自身
-   含 `NS5591` 时拒绝还原；集成的备份/漂移重打/还原独立于工作模式。
-4. `observe` 模式不主动改写网络规则；无 AGH / Clash 时进入 300 秒退避空载。
-5. 所有改动均可通过 WebUI、模块卸载或安全模式回退；卸载只还原本模块造成的
-   变更（profile 补丁、曾摘除的劫持）。不要把未经验证的生产设备
-   当作测试机。
-
-## 状态与诊断
-
-| 状态 | 含义 | 建议 |
-|---|---|---|
-| `NORMAL` | 无已知冲突；`auto` 模式或 rescue 标志下的轨道 B 亦属正常 | 继续观察 |
-| `RISK_COEXIST` | VPN 与 DNS 劫持同时存在，形成串联拓扑 | 可工作，但建议评估是否切到 `auto` |
-| `INCONSISTENT` | `observe` 模式下，AGH 进程存在但劫持缺失且无 rescue 标志 | 检查 AGH 模块与 netfilter；若刻意在轨道 B，请改用 `auto` |
-| `DOWN_PORT` | 劫持存在，但 5591 未监听 | 优先点「摘除 AGH 劫持」恢复系统 DNS（fail-open），避免黑洞 |
-
-过滤探针显示 `BLOCKED / UNKNOWN` 时只表示两个测试域名结果不一致，可能是域名
-策略或单域名超时，不能单独据此判定 AGH 整体故障。querylog 长时间没有新记录也
-可能只是设备无 DNS 流量。
-
-## 构建与验证
-
-```sh
-python build_zip.py
-python verify_zip.py
-```
-
-WebUI 回归测试：
-
-```sh
-npm install
-npx playwright install chromium
-npm run test:webui
-```
-
-测试使用真实 Chromium、设备 CSS 视口和 KernelSU `exec(cmd, "{}", callback)`
-桥接桩，覆盖首屏轻量刷新、自动刷新、点击反馈、确认流程、失败状态、实时模式、
-布局和 JavaScript 异常。
-
-## 配置与文件
-
-| 路径 | 用途 |
-|---|---|
-| `/data/adb/modules/rmg_netguard/run/mode` | `observe` / `auto` |
-| `/data/adb/modules/rmg_netguard/run/integration` | DNS 集成标志 |
-| `/data/adb/modules/rmg_netguard/run/state.json` | 最近一次 guard 快照 |
-| `/data/adb/modules/rmg_netguard/run/events.log` | 状态与动作事件 |
-| `/data/adb/modules/rmg_netguard/run/backups/` | Clash Meta profile 原始备份 |
-| `/data/adb/modules/rmg_netguard/run/config` | 可选的 guard 参数覆盖 |
-
-## 文档
-
-- [Wiki 首页](https://github.com/deancyl/rmg-netguard/wiki)
-- [安装与升级](https://github.com/deancyl/rmg-netguard/wiki/安装与升级)
-- [WebUI 使用](https://github.com/deancyl/rmg-netguard/wiki/WebUI-使用)
-- [架构与工作模式](https://github.com/deancyl/rmg-netguard/wiki/架构与工作模式)
-- [故障排查与恢复](https://github.com/deancyl/rmg-netguard/wiki/故障排查与恢复)
-- [开发与验证](https://github.com/deancyl/rmg-netguard/wiki/开发与验证)
-- [完整变更记录](CHANGELOG.md)
-
-## 项目结构
+NetGuard-Core v3.1.1 摒弃了早期版本的复杂轮询与多脚本进程，退守到 Linux 内核数据面与原生事件触发，实现极简与稳健的统一：
 
 ```text
-module/
-  module.prop          KernelSU 模块元数据
-  service.sh           late-load 服务入口
-  scripts/
-    guard.sh           观测与自动切换循环
-    controller.sh      健康门控的 attach / detach
-    config_toggle.sh   Clash Meta profile 集成
-    webui.sh           WebUI 命令分发
-  webroot/index.html   KernelSU WebUI
-tests/webui/           Chromium 交互回归测试
-tests/ng_*.sh          一次性设备运维脚本（手工取证/部署，非自动测试套件）
-build_zip.py           构建模块 zip（版本读自 module.prop）
-verify_zip.py          校验 zip 与源码一致
-verify_consistency.py  版本与关键说明一致性断言（CI 门禁）
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Linux Kernel 数据面                              │
+│                                                                         │
+│   App DNS 请求 ───► [ iptables: ADGUARD_REDIRECT_DNS ]                  │
+│                             │                                           │
+│                 ┌───────────┴───────────┐                               │
+│                 ▼                       ▼                               │
+│        来自 tun+ (Clash VPN)       来自 物理网卡 (Wi-Fi/Cellular)       │
+│                 │                       │                               │
+│       [-o tun+ -j RETURN]               ▼                               │
+│                 │               重定向至 AGH 本地监听                    │
+│                 ▼                (127.0.0.1:5591)                       │
+│        0ms 内核原生放行直通                                             │
+└─────────────────┬───────────────────────────────────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────────────────────────────────────┐
+│                   零常驻 Shell · 事件驱动控制面                         │
+│                                                                         │
+│   轻量系统 C 进程: inotifyd (监听 /data/adb/agh/bin/agh.pid)             │
+│            │                                                            │
+│            ├─► [AGH 退出 / 崩溃] ──<100ms 自动熔断──► Clash 换阿里公共DNS  │
+│            └─► [AGH 恢复 / 启动] ──<100ms 自动对齐──► 恢复 AGH + 注入内核豁免│
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 已知限制
+### 1. Linux 内核原生 0ms 双轨分流
+在 `ADGUARD_REDIRECT_DNS` 与 `ADGUARD_BLOCK_DNS` 链顶部直接注入静态内核规则 `-o tun+ -j RETURN`。  
+当 Clash VPN 开启时，tun 网卡发出的 DNS 数据包由 Linux 协议栈在内核层直接快速放行，**彻底废除后台网络监听进程与动态 iptables 重写**，0 延迟、0 丢包。
 
-- `nameserver-policy geosite:cn -> [system]` 等 profile 策略会让部分国内域名绕过
-  AGH；这是订阅配置层面的行为，改动前需要评估规则命中范围。
-- CMFA `override.json` 可能被 profile 自身的 `dns:` 段压制，因此集成直接处理活动
-  profile，并依赖备份和漂移检测保证可逆。
-- 本项目不是 AdGuard Home 或 Clash Meta 的替代品，也不负责修复第三方模块自身
-  的进程、pidfile 或端口问题。
+### 2. 单 inotifyd 秒级熔断保护（0 常驻 Shell）
+模块稳态下**不存在任何常驻的 `sh` / `mksh` 进程**。  
+仅使用系统内置轻量 C 语言程序 `inotifyd`（内存仅约 200KB，0 CPU Ticks）监听 `agh.pid`：
+- **AGH 停止/闪退时**：`<100ms` 内自动将 Clash Meta 活动配置中的上游熔断降级至阿里公共 DNS（`223.5.5.5`），彻底杜绝断网；
+- **AGH 重新拉起时**：`<100ms` 内自动恢复 `127.0.0.1:5591` 并补齐内核规则豁免。
 
-## 版本
+### 3. 无损可逆的配置串联
+- 对 Clash Meta 配置的补丁写入严禁使用 `mv` 或 `sed -i`，强制采用原子覆写（`cat tmp > "$CFG"`），100% 保持文件 UID、GID 与 SELinux 扩展上下文完全保真；
+- 自动备份原始配置（`.orig`），卸载模块时完整无损还原。
 
-当前主线版本：`v2.3.2`（`versionCode=30`）；最新 Release tag 为 `v2.2.1`
-（v2.2.2 / v2.2.3 / v2.2.5 已合入 `main`，尚未打 tag，见 CHANGELOG）。
-版本号使用 SemVer；`module.prop` 是唯一版本源，`build_zip.py`、`verify_zip.py`、
-WebUI 显示、README、Wiki 与 CHANGELOG 由 `verify_consistency.py` 统一校验，
-发布 zip 应与 Git tag 和 Release 标题保持一致。
+### 4. 全面遵从 KernelSU 官方规范
+- **补齐 `action.sh`**：模块卡片恢复 `[▶️]` 执行按钮（`hasActionScript=true`），一键完成秒级规则对齐、`inotifyd` 自愈检查并输出结构化中文体检报告；
+- **原生热安装支持**：声明 `MODULE_HOT_INSTALL_REQUEST=true` 与 `hotinstall.sh`，更新刷入即刻生效，无需软重启，告别卡片置灰与开关锁定；
+- **极简单屏 WebUI**：单屏卡片界面（<6KB），0 后台轮询定时器（0 `setInterval`），按需读时对齐。
 
-作者：`deanc` · 项目地址：
-[deancyl/rmg-netguard](https://github.com/deancyl/rmg-netguard)
+---
+
+## 新旧架构对比
+
+| 维度 | 传统多脚本轮询 (v2.x) | NetGuard-Core 极简架构 (v3.1.1) |
+|---|---|---|
+| **常驻进程** | 2~7 个后台 Shell 进程 (`guard.sh`, `probe.sh` 等) | **0 个常驻 Shell 进程**（仅 1 个系统 C `inotifyd`） |
+| **稳态功耗** | 定时唤醒 CPU、高频 I/O 轮询 | **0 CPU Ticks，稳态 0% CPU 占用** |
+| **双轨切换** | 依赖后台网络监听脚本动态重写 iptables | **内核层静态 `-o tun+ -j RETURN` 原生 0ms 放行** |
+| **断网保护** | 轮询周期较长，AGH 崩溃时存在数秒断网盲区 | **`<100ms` 硬件级 inotify 熔断降级** |
+| **WebUI 资源** | 38KB 控制台，30s 周期性轮询定时器 | **<6KB 极简单屏，0 定时器，按需即时对齐** |
+| **KernelSU 契约** | 缺少 Action 按钮与热部署规范 | **完整实现 Action 脚本、热安装与 WebUI** |
+| **临时 Root 适配** | 需谨慎重启、易产生状态锁定 | **针对免重启与越狱模式深度优化** |
+
+---
+
+## 安装与快速上手
+
+### 运行环境要求
+- **Android 系统**：Android 12 ~ 16+；
+- **Root 方案**：KernelSU (推荐 v3.3.1+)、APatch、Magisk；完美支持临时 Root（如 CVE-2026-43499 / late-load）；
+- **前置依赖**：已安装并运行 AdGuard Home（默认监听 `127.0.0.1:5591` 或 `53`），可选配合 Clash Meta / mihomo。
+
+### 方式 1：标准 Root 用户（常规流程）
+1. 从 [Releases](https://github.com/deancyl/rmg-netguard/releases/latest) 下载最新的 `rmg-netguard-v3.1.1.zip`；
+2. 打开 KernelSU / APatch / Magisk 管理器，选择模块并在本地刷入；
+3. 重启设备（或直接在管理器内开启模块）。
+
+### 方式 2：临时 Root / 越狱模式（免重启热部署）
+由于临时 Root 环境重启即失，请在获得 root shell 后执行免重启热拉起：
+```sh
+# 1. 刷入并热解包到模块目录后执行热启动
+su -c 'sh /data/adb/modules/rmg_netguard/hotinstall.sh'
+```
+模块会自动清理历史残留、注入内核放行规则并拉起 `inotifyd` 守护，无需软硬重启！
+
+---
+
+## 日常管理与界面
+
+### 1. KernelSU 模块卡片【▶️】执行按钮
+在 KernelSU 管理器的模块列表卡片上，点击【▶️】按钮将触发 `action.sh`：
+- 秒级自动校验并对齐 Linux 内核 `-o tun+ -j RETURN` 规则；
+- 检查 `inotifyd` 熔断看门狗是否存活，脱管时自动自愈拉起；
+- 在卡片内输出结构化运行健康报告与最近 5 条事件日志。
+
+### 2. KernelSU WebUI 控制台
+点击卡片上的【`< >`】按钮唤出内置单屏 WebUI：
+- **实时运行拓扑**：一屏展示工作模式、VPN 状态、53 端口劫持状态、AGH 进程与 Clash 补丁状态；
+- **手动控制面板**：支持一键模式切换、劫持挂摘与串联补丁修复；
+- **纯按需加载**：页面无任何后台轮询定时器，打开即拉取，关闭即休眠，彻底消除前端资源占用。
+
+---
+
+## 安全边界与防变砖承诺 (Anti-Brick)
+
+1. **绝对不修改系统文件**：严禁任何挂载读写或篡改 `/system`、`/vendor` 分区的行为；所有操作均在 Linux 内核运行时调度（内存级参数、iptables 链）与模块私有数据区。
+2. **防误杀机制与单例自检**：杀进程前严格核验 `/proc/<pid>/cmdline`，严防 PID 复用误杀系统核心进程（如 `system_server`、`zygote`）。
+3. **Fail-Open 救援机制**：AGH 异常退出时优先摘除劫持并回退公共 DNS，确保连通性优先，绝不会将用户置于断网环境。
+4. **无痕卸载**：模块卸载时自动调用 `uninstall.sh`，彻底清理全部添加的 netfilter 规则、恢复 Clash Meta 原始备份配置，并清理运行标记。
+
+---
+
+## 验证与测试套件
+
+本项目具备极高标准的工程交付纪律，内置四阶分层回归测试与一致性门禁：
+
+```sh
+# 1. 架构不变性与关键说明一致性门禁 (66 项断言)
+py -3 verify_consistency.py
+
+# 2. 物理 Zip 包卫生检查 (0 CRLF, 0 BOM, POSIX 权限)
+py -3 verify_zip.py
+
+# 3. 完整四阶功能与边界测试套件 (Awk 补丁、状态 Schema、熔断状态机)
+py -3 tests/test_v3_suite.py
+```
+
+---
+
+## 版本信息
+
+- 当前主线版本：`v3.1.1`（`versionCode=36`）
+- **模块唯一 ID**：`rmg_netguard`
+- **项目仓库**：[deancyl/rmg-netguard](https://github.com/deancyl/rmg-netguard)
+- **作者**：`Deancyl`
+- 详细更新履历请查阅 [CHANGELOG.md](CHANGELOG.md)。

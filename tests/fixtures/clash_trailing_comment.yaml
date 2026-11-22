@@ -1,0 +1,15 @@
+port: 7890
+mode: rule
+
+dns:
+  enable: true
+  enhanced-mode: fake-ip
+  nameserver: # Primary upstream DNS list
+    - 223.5.5.5
+    - 1.1.1.1
+  fallback: # Secondary DNS
+    - 8.8.8.8
+
+rules:
+  - GEOIP,CN,DIRECT # China Mainland Direct
+  - MATCH,Proxy # Fallback rule

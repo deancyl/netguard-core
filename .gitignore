@@ -1,6 +1,7 @@
 *.zip
 *.sha256
 scratch/
+/scripts/
 run/
 ng_ui_check.js
 node_modules/

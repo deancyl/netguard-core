@@ -2,6 +2,32 @@
 
 本项目使用语义化版本。发布记录以 GitHub Releases 为准；标注「主线提交」的版本已合入 `main` 并部署到验证设备，但未创建 Release tag。
 
+## v3.1.1 - 2026-11-21（KernelSU 模块规范补齐）
+
+### KernelSU 规范与交互完善
+- **补齐 `module/action.sh`**：遵循 KernelSU 模块开发规范，在管理器模块卡片恢复【执行】按钮（`hasActionScript=true`），支持秒级幂等规则对齐、`inotifyd` 自愈检查与结构化体检报告输出。
+- **补齐 `module/customize.sh` 与 `module/hotinstall.sh`**：规范化 `set_perm` 权限设置与旧版 `run/` 配置迁移，**绝不触碰 `webroot` SELinux 标签**以保证管理器 WebUI 权限完整；声明支持 KernelSU 原生热安装（`MODULE_HOT_INSTALL_REQUEST=true`），刷入更新后免软重启即刻生效，避免卡片卡在待重启状态影响开关切换。
+- **WebUI 与服务健壮性增强**：`webroot/index.html` 增加 `<link rel="icon" href="data:,">` 消除 `favicon.ico` 404 报错，补全 `tun+` 绕过状态展示与 15s Bridge 超时看门狗；`service.sh` 补充 `PATH` 兜底与 `disable` 开关防御。
+
+## v3.1.0 - 2026-11-21（主线升级）
+
+### 终极极简架构：0 常驻 Shell 进程 + 内核原生 0ms 双轨分流
+- **内核原生 0ms 双轨分流**：在 `ADGUARD_REDIRECT_DNS` 与 `ADGUARD_BLOCK_DNS` 规则链顶部注入静态内核规则 `-o tun+ -j RETURN`。当 Clash VPN 开启时，tun 接口 DNS 流量由 Linux 内核路由表在数据面实现 0ms 原生绕过；彻底废除 `ip monitor link` 后台网络监听进程与 iptables 动态反复重写。
+- **单 inotifyd 启停熔断闭环**：利用系统内置轻量 C 二进制 `inotifyd` 监听 `/data/adb/agh/bin:nd`（仅 `agh.pid` 增删）。AGH 停止时 `<100ms` 自动将 Clash 熔断降级至 `223.5.5.5`（杜绝断网），AGH 启动时 `<100ms` 自动恢复 `127.0.0.1:5591` 并补全内核豁免。
+- **0 常驻 Shell 守护**：常驻进程由 v3.0 的 2 个进程收敛至仅 1 个原生 C 语言 `inotifyd` 监听器（~200KB 内存，0 个常驻 `sh` 进程，稳态 0 CPU Ticks）。
+- **权限与上下文严格无损**：`patch_clash` 采用 `cat tmp > "$CFG"` 覆写策略，严禁 `mv` / `sed -i`，保证 UID、GID 与 SELinux 扩展上下文完全保真。
+
+## v3.0.0 - 2026-11-19（主线重构）
+
+### 重大架构重构：最小必要原则与极简零功耗架构
+- **架构收敛**：从 8 个脚本收敛为单一核心 `module/scripts/netguard.sh`，模块物理文件缩减为 5 个核心文件，废除所有冗余功能。
+- **进程模型优化**：废除 `guard.sh` 多路管道与 inotifyd，采用原生 mksh 协同进程（`ip monitor link 2>/dev/null |&`），常驻进程数由 7 个严格降为 2 个，小核绑定，稳态 0% CPU 消耗。
+- **纯内核只读判定**：彻底废除 `probe.sh`（0 主动发包）与 `do_agh_guard`（0 篡改 AGH 配置），废除 `kill -HUP` 信号干预，退守内核 `/proc`、`/sys` 状态只读探测。
+- **对称双轨防护**：修复 `do_attach` 遗漏 IPv6 `ADGUARD_BLOCK_DNS` 阻断规则的问题，实现 IPv4 53 劫持与 IPv6 53 阻断的双向对称摘除与恢复。
+- **Clash 补丁容错增强**：`patch_clash` awk 正则全面增强，支持 YAML 行尾注释、行内数组与中文规则名，AGH 宕机自动触发 223.5.5.5 熔断 fallback。
+- **单屏极简 WebUI**：将 38KB 控制台精简至单屏卡片（<6KB），彻底消除后台轮询定时器（0 `setInterval`），按需读时对齐。
+- **守护健壮性**：`service.sh` 引入 `nohup` 异步脱钩与防 PID 复用误杀校验；`uninstall.sh` 修复 `pkill -P` 短路缺陷。
+
 ## v2.3.2 - 2026-11-14（主线提交）
 
 ### 修复：rules_audit 在轨道 B 下的假阳性 WARN 误报

@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Version + documentation consistency gate.
+"""RMG NetGuard v3.1 Consistency & Architecture Invariant Gate.
 
-Rationale (2026-11-05): v2.2.2/v2.2.3 shipped code fixes (fail-open detach,
-track-B classifier) without updating the UI text, README, wiki or version
-strings. This script makes that class of drift fail in CI.
+Validates:
+  1. Version Single Source of Truth (module/module.prop -> all docs, metadata, UI);
+  2. Architecture Invariant (strict 6-file module exclusivity, redundant scripts deleted);
+  3. Minimal Principle Violations (no kill -HUP, no active UDP probes, no setInterval, 0 shell daemons);
+  4. Core Required Features (-o tun+ kernel bypass, inotifyd agh circuit breaker, reversible Clash integration).
 
-Checks:
-  1. one version source (module/module.prop) reflected everywhere;
-  2. no hardcoded version in the build/verify scripts;
-  3. forbidden stale statements never return to user-facing docs;
-  4. required new statements (fail-open, VPN restart, timings) stay present.
-
-Exit 0 = all green, 1 = drift detected. Pure stdlib, LF, ASCII output only.
+Exit 0 = all green, 1 = invariant violated.
 """
 import json
 import os
@@ -24,6 +20,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 def read(rel):
     with open(os.path.join(HERE, rel), "r", encoding="utf-8") as f:
         return f.read()
+
+
+def exists(rel):
+    return os.path.exists(os.path.join(HERE, rel))
 
 
 def version():
@@ -43,30 +43,28 @@ def check(name, ok, detail=""):
     print(("PASS  " if ok else "FAIL  ") + name + ((" -> " + detail) if detail and not ok else ""))
 
 
-def has(rel, needle):
-    return needle in read(rel)
-
-
-# ---- 1. version is a single source of truth --------------------------------
+# ---- 1. Version Single Source of Truth -------------------------------------
 prop = read("module/module.prop")
 check("module.prop version present", bool(V), V)
 check("module.prop description starts with version",
-      ("description=RMG NetGuard " + V) in prop)
+      ("description=NetGuard-Core" in prop or "description=NetGuard" in prop or "description=RMG NetGuard" in prop) and V in prop)
 vc = [l.split("=", 1)[1].strip() for l in prop.splitlines()
       if l.startswith("versionCode=")]
 check("module.prop versionCode present", bool(vc and vc[0].isdigit()), vc[0] if vc else "missing")
 
 check("index.html static fallback version",
       ('id="ui_ver">' + V + "<") in read("module/webroot/index.html"))
+
 try:
     pkg = json.loads(read("package.json"))
     check("package.json version", pkg.get("version") == V.lstrip("v"),
           "got %s, want %s" % (pkg.get("version"), V.lstrip("v")))
-except ValueError as e:
+except Exception as e:
     check("package.json version", False, str(e))
 
 check("CHANGELOG contains current version", ("## " + V) in read("CHANGELOG.md"))
-check("README version section", ("当前主线版本：`" + V + "`") in read("README.md"))
+check("README version section",
+      ("当前主线版本：`" + V + "`" in read("README.md") or "当前主线版本**：`" + V + "`" in read("README.md")))
 check("wiki/Home mainline version", ("主线版本：`" + V + "`") in read("wiki/Home.md"))
 
 for rel in ("build_zip.py", "verify_zip.py"):
@@ -75,91 +73,113 @@ for rel in ("build_zip.py", "verify_zip.py"):
     check(rel + " has no hardcoded zip version",
           ("rmg-netguard-" + V + ".zip") not in body and 'OUT = os.path.join(HERE, "rmg-netguard-v2.' not in body)
 
-# stale concrete versions in user-facing install docs
-for rel in ("README.md", "wiki/安装与升级.md"):
-    check(rel + " has no stale v2.2.1 download filename",
-          "rmg-netguard-v2.2.1.zip" not in read(rel))
+# ---- 2. v3.1.1 Architecture Invariant: Redundant scripts MUST NOT exist ---
+OLD_SCRIPTS = [
+    "module/scripts/env.sh",
+    "module/scripts/guard.sh",
+    "module/scripts/controller.sh",
+    "module/scripts/config_toggle.sh",
+    "module/scripts/probe.sh",
+    "module/scripts/rescue.sh",
+    "module/scripts/rules_audit.sh",
+    "module/scripts/webui.sh",
+]
+for s in OLD_SCRIPTS:
+    check("redundant script deleted: " + s, not exists(s), "file still exists!")
 
-# ---- 2. statements that must NOT come back --------------------------------
+# ---- 3. v3.1.1 Core Files MUST exist (including KernelSU spec scripts) ----
+CORE_FILES = [
+    "module/module.prop",
+    "module/service.sh",
+    "module/uninstall.sh",
+    "module/action.sh",
+    "module/customize.sh",
+    "module/hotinstall.sh",
+    "module/scripts/on_agh.sh",
+    "module/scripts/netguard.sh",
+    "module/webroot/index.html",
+]
+for cf in CORE_FILES:
+    check("core file present: " + cf, exists(cf), "missing core file")
+
+# ---- 4. Statements that must NOT exist (Minimal principle violations) -----
 FORBIDDEN = {
+    "module/scripts/netguard.sh": [
+        "kill -HUP",
+        "kill -1 ",
+        "AdGuardHome.yaml",
+        "/dev/udp",
+        "curl ",
+        "ip monitor link",
+    ],
     "module/webroot/index.html": [
-        "任何切换都会被拒绝",
-        "零干预，只记录状态",
-        "事件日志（最近 20 条）",
-        "未安装 AGH/Clash 时模块为纯观测空载",
-        "状态每 90 秒由后台刷新一次",
+        "setInterval",           # 0 background timers
+        "webui.sh",              # no legacy controller calls
+        "controller.sh",
+        "window.confirm",
     ],
     "README.md": [
         "默认只观测、不修改网络",
-        "任何方向的自动切换都会被拒绝",
-        "当前版本：`v2.2.1`",
-    ],
-    "wiki/Home.md": [
-        "动作前必须通过 AGH 健康门控",
-        "最新发布：`v2.2.1`",
-    ],
-    "wiki/WebUI-使用.md": [
-        "不上传网络规则，只记录状态",
-        "每次动作前都会检查 AGH 进程和 5591 应答",
-        "最近 20 条模块事件",
-    ],
-    "wiki/架构与工作模式.md": [
-        "在 attach 与 detach 前都要求",
-        "| `INCONSISTENT` | AGH 进程存在但劫持缺失 |",
-        "前提：VPN 开启，AGH 劫持摘除，mihomo 上游指向 AGH。",
-    ],
-    "wiki/故障排查与恢复.md": [
-        "只有在确认健康门控条件后才执行网络动作。",
-        "含义：AGH 进程存在，但 `OUTPUT -> ADGUARD_REDIRECT_DNS` 不存在。",
-    ],
-    "module/scripts/controller.sh": [
-        "# health gate: BOTH directions require AGH alive",
-    ],
-    "module/scripts/webui.sh": [
-        "by the click-to-refresh button",
+        "当前版本：`v2.",
     ],
 }
-
-# ---- 3. statements that must STAY -----------------------------------------
-REQUIRED = {
-    "module/webroot/index.html": [
-        "fail-open", "重开一次", "300 秒", "最近 50 条", "约 3 分钟", "version=",
-        "st_agh_up", "agh_upstream",
-    ],
-    "README.md": ["fail-open", "重开一次", "独立于", "RESCUE"],
-    "wiki/Home.md": ["fail-open", "术语对照"],
-    "wiki/WebUI-使用.md": ["不会立即改变", "重开一次", "fail-open", "50 条"],
-    "wiki/架构与工作模式.md": ["方向不对称", "不受健康门阻断", "NORMAL", "INCONSISTENT"],
-    "wiki/故障排查与恢复.md": ["fail-open", "摘除 AGH 劫持", "NORMAL"],
-    "wiki/安装与升级.md": ["重开一次", "verify_consistency.py"],
-    "wiki/开发与验证.md": ["唯一版本源", "verify_consistency.py"],
-    "module/scripts/webui.sh": ["version=", "最近 50 行"],
-    "module/scripts/config_toggle.sh": ["patch_nameserver()", "block list", "[ -f \"$MARK\" ] || return 0",
-                                        "patch_geoip_rule()", "broadcast_reload()", "PROFILE_CHANGED",
-                                        "agh_upstream_needs_fix()", "AGH_UNSAFE_PATTERN", "do_agh_guard()",
-                                        "agh_guard) do_agh_guard", "agh_upstream:"],
-    "module/scripts/rules_audit.sh": ["RULE-SET,(cn|cn-ip|china)",
-                                   "1\\.12\\.12\\.12",
-                                   "APNIC Anycast",
-                                   "域名形态DoH"],
-    "tests/test_config_toggle.sh": ["block-list", "auto: no marker", "re-apply",
-                                    "GEOIP injected", "geoip_idempotent", "auto: geoip drift", "agh_guard", "1.12.12.12", "agh_upstream"],
-    "module/uninstall.sh": ["AdGuardHome.yaml.orig", "AGH_ORIG", "AGH_YAML", "PROFILE_CHANGED"],
-    "module/scripts/env.sh": ["/system/bin/nc"],
-
-}
-
 for rel, needles in FORBIDDEN.items():
+    if not exists(rel):
+        continue
     body = read(rel)
     for n in needles:
-        check("no stale text in " + rel + ": " + n[:28], n not in body,
-              "remove or rephrase")
+        check("no forbidden logic in " + rel + ": " + n[:28], n not in body, "found forbidden logic")
 
+# ---- 5. Required statements (Core guarantees) ------------------------------
+REQUIRED = {
+    "module/scripts/netguard.sh": [
+        "-o tun+ -j RETURN",
+        "ensure_tun_bypass",
+        "do_detach",
+        "do_attach",
+        "patch_clash",
+        "sync_all",
+        "IP-CIDR,0.0.0.0/32,REJECT",
+        "GEOIP,CN,DIRECT",
+    ],
+    "module/scripts/on_agh.sh": [
+        "agh.pid",
+        "on_agh_change",
+    ],
+    "module/service.sh": [
+        "inotifyd",
+        "on_agh.sh",
+        "sync_rules",
+    ],
+    "module/uninstall.sh": [
+        "on_agh.sh",
+        "ADGUARD_REDIRECT_DNS",
+        ".yaml.orig",
+    ],
+    "module/action.sh": [
+        "sync_rules",
+        "netguard.sh",
+    ],
+    "module/customize.sh": [
+        "MODULE_HOT_INSTALL_REQUEST=true",
+        "MODULE_HOT_RUN_SCRIPT=hotinstall.sh",
+    ],
+    "module/hotinstall.sh": [
+        "service.sh",
+        "disable",
+    ],
+    "module/webroot/index.html": [
+        "ui_ver",
+        "netguard.sh",
+        "status",
+    ],
+}
 for rel, needles in REQUIRED.items():
+    if not exists(rel):
+        continue
     body = read(rel)
     for n in needles:
-        check("required text in " + rel + ": " + n[:28], n in body,
-              "statement missing")
+        check("required feature in " + rel + ": " + n[:28], n in body, "required feature missing")
 
 print("\nversion=%s  passed=%d  failed=%d" % (V, len(passes), len(fails)))
 if fails:

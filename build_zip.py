@@ -23,6 +23,7 @@ def module_version():
 
 
 OUT = os.path.join(HERE, "rmg-netguard-%s.zip" % module_version())
+OUT_SHA256 = OUT + ".sha256"
 
 
 def md5(path):
@@ -33,9 +34,19 @@ def md5(path):
     return h.hexdigest()
 
 
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def main():
     if os.path.exists(OUT):
         os.remove(OUT)
+    if os.path.exists(OUT_SHA256):
+        os.remove(OUT_SHA256)
     files = []
     for root, dirs, names in os.walk(SRC):
         dirs.sort()
@@ -52,7 +63,14 @@ def main():
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED) as z:
         for p in files:
             arc = os.path.relpath(p, SRC).replace("\\", "/")
-            z.write(p, arc)
+            zinfo = zipfile.ZipInfo.from_file(p, arc)
+            zinfo.create_system = 3  # Unix
+            if arc.endswith(".sh"):
+                zinfo.external_attr = 0o100755 << 16
+            else:
+                zinfo.external_attr = 0o100644 << 16
+            with open(p, "rb") as f:
+                z.writestr(zinfo, f.read(), compress_type=zipfile.ZIP_DEFLATED)
 
     with zipfile.ZipFile(OUT) as z:
         bad = z.testzip()
@@ -69,8 +87,14 @@ def main():
         assert not data.startswith(b"\xef\xbb\xbf"), "BOM found in " + p
 
     size = os.path.getsize(OUT)
+    zip_sha256 = sha256(OUT)
+
+    with open(OUT_SHA256, "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"{zip_sha256}  {os.path.basename(OUT)}\n")
+
     print("zip: " + OUT)
     print("md5: " + md5(OUT))
+    print("sha256: " + zip_sha256)
     print("size: %d bytes, %d entries" % (size, len(names)))
     for n in names:
         print("  " + n)

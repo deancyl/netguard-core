@@ -1,75 +1,38 @@
 #!/system/bin/sh
-# RMG NetGuard v2.0 - uninstall cleanup. Restores whatever this module
-# changed, nothing else:
-#   1. stops the guard loop
-#   2. reverts the Meta profile NS5591 patch (if integration was applied)
-#   3. re-attaches the AGH hijack if THIS module detached it
 MODDIR=${0%/*}
 RUN="$MODDIR/run"
 BKDIR="$RUN/backups"
+META_PKG="com.github.metacubex.clash.meta"
 
-# stop guard (v1.0.1: PID-reuse guard -- cmdline verified before kill)
-if [ -f "$RUN/guard.pid" ]; then
-  pid=$(cat "$RUN/guard.pid" 2>/dev/null)
-  if [ -n "$pid" ] && [ -r "/proc/$pid/cmdline" ] \
-     && grep -aq "rmg_netguard/scripts/guard.sh" "/proc/$pid/cmdline" 2>/dev/null; then
-    kill "$pid" 2>/dev/null
-  fi
-fi
-pkill -f "rmg_netguard/scripts/guard.sh" 2>/dev/null
-
-# 2. revert DNS integration patch: restore every profile backup we hold
-#    (v2.0: integration backups live in $RUN/backups/<uuid>.yaml.orig)
-if [ -d "$BKDIR" ]; then
-  for orig in "$BKDIR"/*.yaml.orig; do
-    [ -f "$orig" ] || continue
-    uuid=${orig##*/}; uuid=${uuid%.yaml.orig}
-    tgt="/data/data/com.github.metacubex.clash.meta/files/imported/$uuid/config.yaml"
-    if [ -f "$tgt" ] && grep -q "127.0.0.1:5591" "$tgt"; then
-      if grep -q "127.0.0.1:5591" "$orig"; then
-        echo "NetGuard: backup for $uuid contains NS5591, skipping (corrupt?)" >&2
-      else
-        cat "$orig" > "$tgt" \
-          && echo "NetGuard: reverted profile $uuid to pre-integration state" >&2
-        if pidof com.github.metacubex.clash.meta >/dev/null 2>&1; then
-          am broadcast \
-            -a com.github.metacubex.clash.meta.intent.action.PROFILE_CHANGED \
-            --es uuid "$uuid" \
-            -p com.github.metacubex.clash.meta \
-            >/dev/null 2>&1 \
-            && echo "NetGuard: sent PROFILE_CHANGED hot-reload for $uuid" >&2
-        fi
-      fi
+# 清理 inotifyd 与相关进程（安全防误杀校验）
+if [ -r "$RUN/inotify.pid" ]; then
+  read -r p < "$RUN/inotify.pid" 2>/dev/null
+  case "$p" in [0-9]*)
+    if [ -r "/proc/$p/cmdline" ] && grep -q "on_agh.sh" "/proc/$p/cmdline" 2>/dev/null; then
+      kill "$p" 2>/dev/null
     fi
-  done
+    ;;
+  esac
 fi
+pkill -f "on_agh.sh" 2>/dev/null
+pkill -f "rmg_netguard/scripts/netguard.sh" 2>/dev/null
 
-# 3. if we detached the AGH hijack, restore it so the system returns to its
-#    pre-module state
-if [ -f "$RUN/rescue.removed" ]; then
-  if ! iptables -w -t nat -C OUTPUT -j ADGUARD_REDIRECT_DNS 2>/dev/null; then
-    iptables -w -t nat -I OUTPUT 1 -j ADGUARD_REDIRECT_DNS 2>/dev/null \
-      && echo "NetGuard: restored AGH redirect chain (was detached by rescue)" >&2
-  fi
-fi
+# 移除本模块注入的 -o tun+ 豁免规则
+iptables -w -t nat -D ADGUARD_REDIRECT_DNS -o tun+ -j RETURN 2>/dev/null
+ip6tables -w -t filter -D ADGUARD_BLOCK_DNS -o tun+ -j RETURN 2>/dev/null
+ip6tables -w -t nat -D ADGUARD_REDIRECT_DNS6 -o tun+ -j RETURN 2>/dev/null
 
-# 4. restore AGH upstream yaml if agh_guard modified it (AdGuardHome.yaml.orig)
-AGH_YAML="/data/adb/agh/bin/AdGuardHome.yaml"
-AGH_ORIG="$BKDIR/AdGuardHome.yaml.orig"
-if [ -f "$AGH_ORIG" ] && [ -f "$AGH_YAML" ]; then
-  cat "$AGH_ORIG" > "$AGH_YAML" \
-    && echo "NetGuard: restored AGH upstream yaml from backup $AGH_ORIG" >&2
-  pid=$(pidof AdGuardHome 2>/dev/null)
-  if [ -n "$pid" ]; then
-    cmd=$(cat /proc/$pid/cmdline 2>/dev/null | tr '\0' ' ')
-    case "$cmd" in
-      *AdGuardHome*)
-        kill -HUP "$pid" 2>/dev/null
-        echo "NetGuard: SIGHUP sent to AGH pid=$pid after yaml restore" >&2
-        ;;
-    esac
+# 还原 Clash 活动配置备份并通知 Clash Meta 重新加载
+for orig in "$BKDIR"/*.yaml.orig; do
+  [ -f "$orig" ] || continue
+  uuid=${orig##*/}; uuid=${uuid%.yaml.orig}
+  tgt="/data/data/$META_PKG/files/imported/$uuid/config.yaml"
+  if [ -f "$tgt" ] && grep -qE "127\.0\.0\.1:5591|IP-CIDR,0\.0\.0\.0/32,REJECT" "$tgt"; then
+    cat "$orig" > "$tgt"
+    am broadcast -a "${META_PKG}.intent.action.PROFILE_CHANGED" --es uuid "$uuid" -p "$META_PKG" >/dev/null 2>&1
   fi
-fi
+done
 
 rm -rf "$RUN" 2>/dev/null
 exit 0
+

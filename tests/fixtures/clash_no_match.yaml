@@ -1,0 +1,13 @@
+# Clash configuration without MATCH line
+port: 7890
+mode: rule
+
+dns:
+  enable: true
+  enhanced-mode: fake-ip
+  nameserver:
+    - 223.5.5.5
+
+rules:
+  - DOMAIN-SUFFIX,example.com,DIRECT
+  - GEOIP,CN,DIRECT

@@ -1,0 +1,13 @@
+{
+  "version": "v3.1.0",
+  "mode": "auto",
+  "vpn": 0,
+  "vpn_if": "",
+  "hijack": 1,
+  "tun_bypass": 1,
+  "agh_pid": "1234",
+  "agh_port": 1,
+  "integ": "on",
+  "patched": "yes",
+  "fallback": 0
+}

@@ -1,8 +1,8 @@
 {
-  "name": "rmg-netguard",
-  "version": "2.3.2",
+  "name": "netguard-core",
+  "version": "3.1.1",
   "private": true,
-  "description": "KernelSU DNS/VPN dual-track guardian",
+  "description": "NetGuard-Core: Zero-Shell Linux Kernel DNS/VPN Dual-Track Guardian for Android",
   "scripts": {
     "test:webui:setup": "playwright install chromium",
     "test:webui": "node tests/webui/verify.js"
