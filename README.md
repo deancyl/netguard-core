@@ -6,10 +6,10 @@ NetGuard-Core 专为彻底解决 Android 环境下 **AdGuard Home (AGH)** 与 **
 
 基于 **Linux 内核数据面 0ms 旁路** 与 **单 inotifyd 秒级熔断机制**，实现稳态 **0 常驻 Shell 进程**、**稳态 0% CPU 占用**。不篡改任何系统分区，**深度兼容临时 Root（如 CVE-2026-43499 / late-load）与常规完整 Root 环境**。
 
-[![Latest release](https://img.shields.io/github/v/release/deancyl/rmg-netguard?sort=semver)](https://github.com/deancyl/rmg-netguard/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/deancyl/netguard-core?sort=semver)](https://github.com/deancyl/netguard-core/releases/latest)
 [![KernelSU](https://img.shields.io/badge/KernelSU-v3.3.1%20compliant-2ea44f)](https://kernelsu.org/zh_CN/guide/module.html)
-[![Android](https://img.shields.io/badge/Android-12%20--%2016+-3ddc84)](https://github.com/deancyl/rmg-netguard)
-[![Architecture](https://img.shields.io/badge/Architecture-0%20Shell%20Daemon-blue)](https://github.com/deancyl/rmg-netguard)
+[![Android](https://img.shields.io/badge/Android-12%20--%2016+-3ddc84)](https://github.com/deancyl/netguard-core)
+[![Architecture](https://img.shields.io/badge/Architecture-0%20Shell%20Daemon-blue)](https://github.com/deancyl/netguard-core)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ---
@@ -102,7 +102,7 @@ NetGuard-Core v3.1.1 摒弃了早期版本的复杂轮询与多脚本进程，�
 - **前置依赖**：已安装并运行 AdGuard Home（默认监听 `127.0.0.1:5591` 或 `53`），可选配合 Clash Meta / mihomo。
 
 ### 方式 1：标准 Root 用户（常规流程）
-1. 从 [Releases](https://github.com/deancyl/rmg-netguard/releases/latest) 下载最新的 `rmg-netguard-v3.1.1.zip`；
+1. 从 [Releases](https://github.com/deancyl/netguard-core/releases/latest) 下载最新的 `rmg-netguard-v3.1.1.zip`；
 2. 打开 KernelSU / APatch / Magisk 管理器，选择模块并在本地刷入；
 3. 重启设备（或直接在管理器内开启模块）。
 
@@ -162,6 +162,6 @@ py -3 tests/test_v3_suite.py
 
 - 当前主线版本：`v3.1.1`（`versionCode=36`）
 - **模块唯一 ID**：`rmg_netguard`
-- **项目仓库**：[deancyl/rmg-netguard](https://github.com/deancyl/rmg-netguard)
+- **项目仓库**：[deancyl/netguard-core](https://github.com/deancyl/netguard-core)
 - **作者**：`Deancyl`
 - 详细更新履历请查阅 [CHANGELOG.md](CHANGELOG.md)。

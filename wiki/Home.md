@@ -17,7 +17,7 @@ NetGuard-Core (前身 RMG NetGuard) 是面向 Android / KernelSU 的极简零常
 - 主线版本：`v3.1.1`（`versionCode=36`，已合入 `main` 并部署验证设备）
 - 模块 ID：`rmg_netguard`
 - 已验证环境：KernelSU 3.3.1 late-load、Android 16、SM-S9180
-- 详细变更记录：[CHANGELOG](https://github.com/deancyl/rmg-netguard/blob/main/CHANGELOG.md)
+- 详细变更记录：[CHANGELOG](https://github.com/deancyl/netguard-core/blob/main/CHANGELOG.md)
 
 ## 核心设计原则
 

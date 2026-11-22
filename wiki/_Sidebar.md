@@ -1,4 +1,4 @@
-## RMG NetGuard
+## NetGuard-Core
 
 - [首页](Home)
 - [安装与升级](安装与升级)
@@ -9,6 +9,6 @@
 
 ## 项目
 
-- [README](https://github.com/deancyl/rmg-netguard#readme)
-- [Releases](https://github.com/deancyl/rmg-netguard/releases)
-- [Issues](https://github.com/deancyl/rmg-netguard/issues)
+- [README](https://github.com/deancyl/netguard-core#readme)
+- [Releases](https://github.com/deancyl/netguard-core/releases)
+- [Issues](https://github.com/deancyl/netguard-core/issues)

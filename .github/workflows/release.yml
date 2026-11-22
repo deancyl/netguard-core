@@ -52,4 +52,4 @@ jobs:
             --verify-tag \
             --generate-notes \
             --latest \
-            --title "RMG NetGuard $GITHUB_REF_NAME"
+            --title "NetGuard-Core $GITHUB_REF_NAME"
