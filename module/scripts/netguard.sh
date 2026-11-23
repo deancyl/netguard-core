@@ -96,19 +96,43 @@ agh_port_up() {
   grep -q ":15D7 " /proc/net/udp /proc/net/udp6 2>/dev/null
 }
 
-# 核心 1：向 AGH 规则链顶部幂等注入 -o tun+ -j RETURN（0ms 内核原生双轨分流）
+# 核心 1：向 AGH 规则链顶部幂等注入 -o tun+ -j RETURN 及 CaptivePortal 智能豁免
 ensure_tun_bypass() {
   [ "$(mode_get)" = "auto" ] || return 0
+  local uids uid
+  uids=$(grep 'captiveportallogin' /data/system/packages.list 2>/dev/null | cut -d' ' -f2)
+  [ -z "$uids" ] && uids="10173"
+
   if iptables -w -t nat -L "$AGH_CHAIN" >/dev/null 2>&1; then
     if ! iptables -w -t nat -C "$AGH_CHAIN" -o tun+ -j RETURN 2>/dev/null; then
-      iptables -w -t nat -I "$AGH_CHAIN" 1 -o tun+ -j RETURN 2>/dev/null &&         log_ev "RULE" "injected -o tun+ -j RETURN at top of $AGH_CHAIN"
+      iptables -w -t nat -I "$AGH_CHAIN" 1 -o tun+ -j RETURN 2>/dev/null && \
+        log_ev "RULE" "injected -o tun+ -j RETURN at top of $AGH_CHAIN"
     fi
+    for uid in $uids; do
+      case "$uid" in ''|*[!0-9]*) continue ;; esac
+      if ! iptables -w -t nat -C "$AGH_CHAIN" -m owner --uid-owner "$uid" -j RETURN 2>/dev/null; then
+        iptables -w -t nat -I "$AGH_CHAIN" 1 -m owner --uid-owner "$uid" -j RETURN 2>/dev/null && \
+          log_ev "RULE" "injected CaptivePortal bypass (UID $uid) into $AGH_CHAIN"
+      fi
+    done
   fi
   if ip6tables -w -t filter -L "$AGH_BLOCK6" >/dev/null 2>&1; then
-    ip6tables -w -t filter -C "$AGH_BLOCK6" -o tun+ -j RETURN 2>/dev/null ||       ip6tables -w -t filter -I "$AGH_BLOCK6" 1 -o tun+ -j RETURN 2>/dev/null
+    ip6tables -w -t filter -C "$AGH_BLOCK6" -o tun+ -j RETURN 2>/dev/null || \
+      ip6tables -w -t filter -I "$AGH_BLOCK6" 1 -o tun+ -j RETURN 2>/dev/null
+    for uid in $uids; do
+      case "$uid" in ''|*[!0-9]*) continue ;; esac
+      ip6tables -w -t filter -C "$AGH_BLOCK6" -m owner --uid-owner "$uid" -j RETURN 2>/dev/null || \
+        ip6tables -w -t filter -I "$AGH_BLOCK6" 1 -m owner --uid-owner "$uid" -j RETURN 2>/dev/null
+    done
   fi
   if ip6tables -w -t nat -L "$AGH_CHAIN6" >/dev/null 2>&1; then
-    ip6tables -w -t nat -C "$AGH_CHAIN6" -o tun+ -j RETURN 2>/dev/null ||       ip6tables -w -t nat -I "$AGH_CHAIN6" 1 -o tun+ -j RETURN 2>/dev/null
+    ip6tables -w -t nat -C "$AGH_CHAIN6" -o tun+ -j RETURN 2>/dev/null || \
+      ip6tables -w -t nat -I "$AGH_CHAIN6" 1 -o tun+ -j RETURN 2>/dev/null
+    for uid in $uids; do
+      case "$uid" in ''|*[!0-9]*) continue ;; esac
+      ip6tables -w -t nat -C "$AGH_CHAIN6" -m owner --uid-owner "$uid" -j RETURN 2>/dev/null || \
+        ip6tables -w -t nat -I "$AGH_CHAIN6" 1 -m owner --uid-owner "$uid" -j RETURN 2>/dev/null
+    done
   fi
 }
 
