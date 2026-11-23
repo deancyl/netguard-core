@@ -13,7 +13,7 @@ RUN="$MODDIR/run"
 mkdir -p "$RUN" 2>/dev/null
 
 _VER=$(grep '^version=' "$MODDIR/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2)
-_VER="${_VER:-v3.1.1}"
+_VER="${_VER:-v3.1.2}"
 
 echo "=========================================="
 echo "  RMG NetGuard ${_VER} 实时体检与自愈"

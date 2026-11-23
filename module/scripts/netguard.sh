@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# RMG NetGuard v3.1.1 — Kernel-Native -o tun+ Bypass & Reversible Clash Integration
+# RMG NetGuard v3.1.2 — Kernel-Native -o tun+ Bypass & Reversible Clash Integration
 # 0 permanent shell daemons, 0 curl, 0 UDP probes, 0 SIGHUP, 0 AGH config edits.
 case ":$PATH:" in
   *:/data/adb/ksu/bin:*) ;;
@@ -255,7 +255,7 @@ do_status() {
   iptables -w -t nat -C OUTPUT -j "$AGH_CHAIN" 2>/dev/null && h_on=1
   iptables -w -t nat -C "$AGH_CHAIN" -o tun+ -j RETURN 2>/dev/null && tun_bypass=1
   if active_profile && grep -q "$NS5591" "$CFG" 2>/dev/null; then patched="yes"; fi
-  local ver="v3.1.1"
+  local ver="v3.1.2"
   if [ -r "$MODDIR/module.prop" ]; then
     local pv
     pv=$(grep '^version=' "$MODDIR/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2)

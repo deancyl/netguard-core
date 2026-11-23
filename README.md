@@ -29,9 +29,9 @@ NetGuard-Core 专为彻底解决 Android 环境下 **AdGuard Home (AGH)** 与 **
 
 ---
 
-## 核心架构突破（v3.1.1 极简零功耗设计）
+## 核心架构突破（v3.1.2 极简零功耗设计）
 
-NetGuard-Core v3.1.1 摒弃了早期版本的复杂轮询与多脚本进程，退守到 Linux 内核数据面与原生事件触发，实现极简与稳健的统一：
+NetGuard-Core v3.1.2 摒弃了早期版本的复杂轮询与多脚本进程，退守到 Linux 内核数据面与原生事件触发，实现极简与稳健的统一：
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -82,7 +82,7 @@ NetGuard-Core v3.1.1 摒弃了早期版本的复杂轮询与多脚本进程，�
 
 ## 新旧架构对比
 
-| 维度 | 传统多脚本轮询 (v2.x) | NetGuard-Core 极简架构 (v3.1.1) |
+| 维度 | 传统多脚本轮询 (v2.x) | NetGuard-Core 极简架构 (v3.1.2) |
 |---|---|---|
 | **常驻进程** | 2~7 个后台 Shell 进程 (`guard.sh`, `probe.sh` 等) | **0 个常驻 Shell 进程**（仅 1 个系统 C `inotifyd`） |
 | **稳态功耗** | 定时唤醒 CPU、高频 I/O 轮询 | **0 CPU Ticks，稳态 0% CPU 占用** |
@@ -102,7 +102,7 @@ NetGuard-Core v3.1.1 摒弃了早期版本的复杂轮询与多脚本进程，�
 - **前置依赖**：已安装并运行 AdGuard Home（默认监听 `127.0.0.1:5591` 或 `53`），可选配合 Clash Meta / mihomo。
 
 ### 方式 1：标准 Root 用户（常规流程）
-1. 从 [Releases](https://github.com/deancyl/netguard-core/releases/latest) 下载最新的 `rmg-netguard-v3.1.1.zip`；
+1. 从 [Releases](https://github.com/deancyl/netguard-core/releases/latest) 下载最新的 `rmg-netguard-v3.1.2.zip`；
 2. 打开 KernelSU / APatch / Magisk 管理器，选择模块并在本地刷入；
 3. 重启设备（或直接在管理器内开启模块）。
 
@@ -160,7 +160,7 @@ py -3 tests/test_v3_suite.py
 
 ## 版本信息
 
-- 当前主线版本：`v3.1.1`（`versionCode=36`）
+- 当前主线版本：`v3.1.2`（`versionCode=37`）
 - **模块唯一 ID**：`rmg_netguard`
 - **项目仓库**：[deancyl/netguard-core](https://github.com/deancyl/netguard-core)
 - **作者**：`Deancyl`

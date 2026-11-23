@@ -1,6 +1,6 @@
 {
   "name": "netguard-core",
-  "version": "3.1.1",
+  "version": "3.1.2",
   "private": true,
   "description": "NetGuard-Core: Zero-Shell Linux Kernel DNS/VPN Dual-Track Guardian for Android",
   "scripts": {

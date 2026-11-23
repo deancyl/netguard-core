@@ -2,7 +2,7 @@
 # 纪律：绝不 exit / return，不强制覆写 webroot 的 SELinux 上下文，保障 WebUI 正常读取。
 
 _VER=$(grep '^version=' "$MODPATH/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2)
-_VER="${_VER:-v3.1.1}"
+_VER="${_VER:-v3.1.2}"
 
 ui_print "- RMG NetGuard ${_VER} (rmg_netguard)"
 ui_print "- 内核原生 -o tun+ 双轨分流 + 单 inotifyd 启停熔断"

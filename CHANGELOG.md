@@ -2,6 +2,13 @@
 
 本项目使用语义化版本。发布记录以 GitHub Releases 为准；标注「主线提交」的版本已合入 `main` 并部署到验证设备，但未创建 Release tag。
 
+## v3.1.2 - 2026-11-23（CaptivePortal 热点认证智能豁免）
+
+### 修复与架构增强
+- **CaptivePortalLogin 智能免劫持**：在 `ADGUARD_REDIRECT_DNS`（IPv4 NAT）与 `ADGUARD_BLOCK_DNS`（IPv6 Filter）规则链顶部自动通过 `/data/system/packages.list` 极速探测并注入 `com.google.android.captiveportallogin`（UID `10173` 与 `10001` 等）的 `RETURN` 放行规则。
+- **公共 Wi-Fi 兼容性重大突破**：彻底根治商用/公共 Wi-Fi（如企业内网、招行办公网 `cmb-oa.wifi.com`、酒店、机场、星巴克等热点）因内部私有认证域名在公网上游报 `NXDOMAIN` 触发 `net::ERR_NAME_NOT_RESOLVED` 的顽疾，实现全自动原生秒弹认证。
+- **零副作用保障**：认证完成后，整机其他应用正常享受 AdGuard Home 过滤防护，Clash Meta `-o tun+ -j RETURN` 零延迟内核旁路保持稳固。
+
 ## v3.1.1 - 2026-11-21（KernelSU 模块规范补齐）
 
 ### KernelSU 规范与交互完善

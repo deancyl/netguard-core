@@ -169,7 +169,7 @@ class Tier1FeatureCoverage(unittest.TestCase):
     """Tier 1: Feature Coverage & Fundamental Invariants."""
 
     def test_01_module_prop_metadata(self):
-        """Validates module.prop fields, version v3.1.1, and versionCode 36."""
+        """Validates module.prop fields, version v3.1.2, and versionCode 37."""
         self.assertTrue(os.path.exists(MODULE_PROP), "module/module.prop does not exist")
         props = {}
         with open(MODULE_PROP, "r", encoding="utf-8") as f:
@@ -180,12 +180,12 @@ class Tier1FeatureCoverage(unittest.TestCase):
                     props[k.strip()] = v.strip()
 
         self.assertEqual(props.get("id"), "rmg_netguard", "module.prop id must be rmg_netguard")
-        self.assertEqual(props.get("version"), "v3.1.1", "module.prop version must be v3.1.1")
-        self.assertEqual(props.get("versionCode"), "36", "module.prop versionCode must be 36")
+        self.assertEqual(props.get("version"), "v3.1.2", "module.prop version must be v3.1.2")
+        self.assertEqual(props.get("versionCode"), "37", "module.prop versionCode must be 37")
         self.assertEqual(props.get("author"), "Deancyl", "module.prop author must be Deancyl")
         self.assertTrue("NetGuard-Core" in props.get("name", "") or "NetGuard" in props.get("name", ""),
                         "module.prop name must contain NetGuard-Core or NetGuard")
-        self.assertIn("v3.1.1", props.get("description", ""), "module.prop description must mention v3.1.1")
+        self.assertIn("v3.1.2", props.get("description", ""), "module.prop description must mention v3.1.2")
 
     def test_02_version_single_source_of_truth(self):
         """Verifies version consistency between module.prop, package.json, and docs."""
@@ -196,21 +196,21 @@ class Tier1FeatureCoverage(unittest.TestCase):
         match = re.search(r"^version=(v?[0-9\.]+)", prop_content, re.M)
         self.assertTrue(match, "version= line not found in module.prop")
         version_str = match.group(1).lstrip("v")
-        self.assertEqual(version_str, "3.1.1", "Mainline version must be 3.1.1")
+        self.assertEqual(version_str, "3.1.2", "Mainline version must be 3.1.2")
 
         # Check package.json if present
         pkg_path = os.path.join(PROJECT_ROOT, "package.json")
         if os.path.exists(pkg_path):
             with open(pkg_path, "r", encoding="utf-8") as f:
                 pkg_data = json.load(f)
-            self.assertEqual(pkg_data.get("version"), "3.1.1", "package.json version must match 3.1.1")
+            self.assertEqual(pkg_data.get("version"), "3.1.2", "package.json version must match 3.1.2")
 
         # Check CHANGELOG.md
         changelog_path = os.path.join(PROJECT_ROOT, "CHANGELOG.md")
         if os.path.exists(changelog_path):
             with open(changelog_path, "r", encoding="utf-8") as f:
                 cl_content = f.read()
-            self.assertIn("v3.1.1", cl_content, "CHANGELOG.md must document v3.1.1")
+            self.assertIn("v3.1.2", cl_content, "CHANGELOG.md must document v3.1.2")
 
     def test_03_invariant_kernelsu_module_files(self):
         """Asserts that module/ contains strictly the 9 KernelSU-compliant core files and 0 obsolete scripts."""
@@ -602,7 +602,7 @@ class Tier4PackagingAndAcceptance(unittest.TestCase):
 
     def test_18_zip_content_hygiene(self):
         """Inspects generated zip archive for 0 CRLF line endings, 0 UTF-8 BOM, and POSIX permissions."""
-        zip_path = os.path.join(PROJECT_ROOT, "rmg-netguard-v3.1.1.zip")
+        zip_path = os.path.join(PROJECT_ROOT, "rmg-netguard-v3.1.2.zip")
         if not os.path.exists(zip_path):
             # Try finding any generated zip
             zips = [f for f in os.listdir(PROJECT_ROOT) if f.startswith("rmg-netguard-") and f.endswith(".zip")]

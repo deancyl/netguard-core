@@ -1,6 +1,6 @@
 id=rmg_netguard
 name=NetGuard-Core (Zero-Shell Kernel DNS Guard)
-version=v3.1.1
-versionCode=36
+version=v3.1.2
+versionCode=37
 author=Deancyl
-description=NetGuard-Core v3.1.1：0 常驻 Shell 进程，Linux 内核 -o tun+ 原生 0ms 双轨分流，单 inotifyd 监听 AGH 启停秒级熔断；通用于临时与完整 Root，补齐 KernelSU 规范。
+description=NetGuard-Core v3.1.2：0 常驻 Shell 进程，Linux 内核 -o tun+ 原生 0ms 双轨分流与 CaptivePortal 智能豁免，单 inotifyd 监听 AGH 启停秒级熔断；通用于临时与完整 Root。
